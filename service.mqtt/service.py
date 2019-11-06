@@ -46,6 +46,11 @@ def sendrpc(method,params):
     mqttlogging("MQTT: JSON-RPC call "+method+" returned "+res)
     return json.loads(res)
 
+def setvol(data):
+    params=json.loads('{"volume":' + str(data) + '}')
+    sendrpc("Application.SetVolume",params)
+    #res=xbmc.executebuiltin("XBMC.SetVolume("+data+")")
+    xbmc.log(data)
 #
 # Publishes a MQTT message. The topic is built from the configured
 # topic prefix and the suffix. The message itself is JSON encoded,
@@ -186,6 +191,15 @@ def processplay(data):
     except ValueError:
         player.play(data)
 
+def processvolume(data):
+    try:
+        vol = int(data)
+        setvol(vol)
+    except ValueError:
+        params=json.loads(data)
+        sendrpc("Application.SetVolume",params)
+
+
 def processplaybackstate(data):
     global playbackstate
     if data=="0" or data=="stop":
@@ -206,6 +220,14 @@ def processplaybackstate(data):
     elif data=="previous":
         player.playprevious()
 
+def processsendcomand(data):
+	try:
+		cmd=json.loads(data)
+		res=xbmc.executeJSONRPC(json.dumps(cmd))
+		mqttlogging("MQTT: JSON-RPC call "+cmd['method']+" returned "+res)
+	except ValueError:
+		mqttlogging("MQTT: JSON-RPC call ValueError")		
+
 def processcommand(topic,data):
     if topic=="notify":
         processnotify(data)
@@ -213,6 +235,10 @@ def processcommand(topic,data):
         processplay(data)
     elif topic=="playbackstate":
         processplaybackstate(data)
+    elif topic=="api":
+		processsendcomand(data)
+    elif topic=="volume":
+        processvolume(data)
     else:
         mqttlogging("MQTT: Unknown command "+topic)
 
@@ -232,6 +258,7 @@ def msghandler(mqc,userdata,msg):
 
 def connecthandler(mqc,userdata,rc):
     mqttlogging("MQTT: Connected to MQTT broker with rc=%d" % (rc))
+    mqc.publish(topic+"connected",2,qos=1,retain=True)
     mqc.subscribe(topic+"command/#",qos=0)
 
 def disconnecthandler(mqc,userdata,rc):
@@ -276,7 +303,6 @@ def startmqtt():
     else:
         mqttlogging("MQTT: No connection possible, giving up")
         return(False)
-    mqc.publish(topic+"connected",2,qos=1,retain=True)
     mqc.loop_start()
     return(True)
 
